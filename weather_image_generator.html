@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天气图片生成器</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1, h2 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .result-container {
+            margin-top: 20px;
+            display: none;
+        }
+        .weather-info {
+            background-color: #edf7ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .image-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .image-container img {
+            max-width: 100%;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background-color: #f1f1f1;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .loading::after {
+            content: "...";
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: "."; }
+            40% { content: ".."; }
+            60%, 100% { content: "..."; }
+        }
+        .error {
+            color: #e74c3c;
+            background-color: #fadbd8;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+        .step {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-left: 3px solid #3498db;
+            background-color: #f8f9fa;
+        }
+        .step.completed {
+            border-left-color: #2ecc71;
+        }
+        .step.active {
+            border-left-color: #f39c12;
+            font-weight: bold;
+        }
+        .prompt-info {
+            background-color: #eafaf1;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>天气图片生成器</h1>
+        <p>输入城市名称，我们将获取当前天气，并生成相应的艺术图片</p>
+        
+        <div class="form-group">
+            <label for="city">城市名称:</label>
+            <input type="text" id="city" placeholder="例如: 北京, 上海, 广州..." required>
+        </div>
+        
+        <button id="generate-btn">生成天气图片</button>
+        
+        <div id="loading" class="loading">正在处理中</div>
+        <div id="error" class="error"></div>
+        
+        <div id="process-steps">
+            <div id="step1" class="step">1. 等待开始...</div>
+            <div id="step2" class="step">2. 获取天气信息</div>
+            <div id="step3" class="step">3. 生成天气艺术图片</div>
+            <div id="step4" class="step">4. 处理图片</div>
+        </div>
+        
+        <div id="result" class="result-container">
+            <h2>处理结果</h2>
+            
+            <div id="weather-info" class="weather-info">
+                <h3>天气信息</h3>
+                <div id="weather-details"></div>
+            </div>
+            
+            <div id="prompt-info" class="prompt-info">
+                <h3>生成提示词</h3>
+                <div id="prompt-details"></div>
+            </div>
+            
+            <div class="image-container">
+                <h3>生成的图片</h3>
+                <img id="generated-image" src="" alt="生成的天气图片">
+            </div>
+            
+            <div class="image-container">
+                <h3>处理后的图片</h3>
+                <img id="processed-image" src="" alt="处理后的天气图片">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const generateBtn = document.getElementById('generate-btn');
+            const cityInput = document.getElementById('city');
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const resultDiv = document.getElementById('result');
+            const weatherDetailsDiv = document.getElementById('weather-details');
+            const promptDetailsDiv = document.getElementById('prompt-details');
+            const generatedImageEl = document.getElementById('generated-image');
+            const processedImageEl = document.getElementById('processed-image');
+            
+            const step1 = document.getElementById('step1');
+            const step2 = document.getElementById('step2');
+            const step3 = document.getElementById('step3');
+            const step4 = document.getElementById('step4');
+            
+            // 天气条件映射到中文描述和提示词
+            const weatherPrompts = {
+                'clear': {
+                    description: '晴朗',
+                    prompt: '阳光明媚的城市景观，蓝天白云，明亮的阳光照射下的城市街道，充满活力的城市场景'
+                },
+                'clouds': {
+                    description: '多云',
+                    prompt: '多云天空下的城市景观，云层覆盖的天空，柔和的光线下的城市街道，宁静的城市场景'
+                },
+                'rain': {
+                    description: '雨天',
+                    prompt: '雨中的城市街道，雨滴落在窗户上，雨伞和雨衣，湿润的路面反射着灯光，雨天的宁静氛围'
+                },
+                'drizzle': {
+                    description: '毛毛雨',
+                    prompt: '毛毛细雨中的城市，轻微的雾气，湿润的空气，微雨中的行人，柔和的雨天氛围'
+                },
+                'thunderstorm': {
+                    description: '雷暴',
+                    prompt: '雷暴天气下的城市，闪电划过天空，乌云密布，暴雨中的城市街道，戏剧性的天气场景'
+                },
+                'snow': {
+                    description: '雪天',
+                    prompt: '雪覆盖的城市景观，雪花飘落，白雪皑皑的街道，冬季的宁静氛围，雪中的城市建筑'
+                },
+                'mist': {
+                    description: '薄雾',
+                    prompt: '薄雾笼罩的城市，朦胧的城市轮廓，雾中的街灯，神秘而宁静的城市氛围'
+                },
+                'fog': {
+                    description: '浓雾',
+                    prompt: '浓雾中的城市，模糊的建筑轮廓，雾中若隐若现的灯光，神秘而安静的城市场景'
+                },
+                'default': {
+                    description: '一般天气',
+                    prompt: '城市景观，城市街道，建筑和行人，日常城市生活场景'
+                }
+            };
+            
+            // 根据温度调整提示词
+            function getTemperatureDescription(temp) {
+                if (temp < 0) return '极冷的';
+                if (temp < 10) return '寒冷的';
+                if (temp < 20) return '凉爽的';
+                if (temp < 30) return '温暖的';
+                return '炎热的';
+            }
+            
+            // 更新步骤状态
+            function updateStep(step, status, isActive = false) {
+                step.classList.remove('active', 'completed');
+                if (status === 'active') {
+                    step.classList.add('active');
+                    step.innerHTML = step.innerHTML.replace('...', '') + ' - 进行中...';
+                } else if (status === 'completed') {
+                    step.classList.add('completed');
+                    step.innerHTML = step.innerHTML.replace(' - 进行中...', '') + ' - 完成';
+                } else {
+                    step.innerHTML = step.innerHTML.replace(' - 进行中...', '').replace(' - 完成', '');
+                }
+            }
+            
+            // 显示错误信息
+            function showError(message) {
+                errorDiv.textContent = '错误: ' + message;
+                errorDiv.style.display = 'block';
+                loadingDiv.style.display = 'none';
+                generateBtn.disabled = false;
+            }
+            
+            // 重置界面
+            function resetUI() {
+                errorDiv.style.display = 'none';
+                resultDiv.style.display = 'none';
+                loadingDiv.style.display = 'block';
+                generateBtn.disabled = true;
+                
+                updateStep(step1, 'active');
+                updateStep(step2, 'waiting');
+                updateStep(step3, 'waiting');
+                updateStep(step4, 'waiting');
+            }
+            
+            // 获取天气信息
+            async function getWeather(city) {
+                try {
+                    updateStep(step1, 'completed');
+                    updateStep(step2, 'active');
+                    
+                    const response = await fetch('/api/mcp', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            server: 'weather',
+                            tool: 'get_current_weather',
+                            args: { city }
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`获取天气信息失败: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    if (data.error) {
+                        throw new Error(`天气API错误: ${data.error}`);
+                    }
+                    
+                    updateStep(step2, 'completed');
+                    return {
+                        temperature: parseFloat(data.temperature || 20),
+                        conditions: data.conditions || 'clear sky',
+                        humidity: parseFloat(data.humidity || 50),
+                        wind_speed: parseFloat(data.wind_speed || 5)
+                    };
+                } catch (error) {
+                    showError(error.message);
+                    throw error;
+                }
+            }
+            
+            // 生成图片
+            async function generateImage(prompt) {
+                try {
+                    updateStep(step3, 'active');
+                    
+                    const response = await fetch('/api/mcp', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            server: 'github.com/nickbaumann98/everart-forge-mcp',
+                            tool: 'generate_image',
+                            args: {
+                                prompt,
+                                model: '8000', // Recraft-Vector
+                                image_count: 1,
+                                format: 'svg'
+                            }
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`生成图片失败: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    if (data.error) {
+                        throw new Error(`图片生成错误: ${data.error}`);
+                    }
+                    
+                    updateStep(step3, 'completed');
+                    return data.imagePath || '/path/to/generated/image.svg';
+                } catch (error) {
+                    showError(error.message);
+                    throw error;
+                }
+            }
+            
+            // 处理图片
+            async function processImage(imagePath, weatherCondition) {
+                try {
+                    updateStep(step4, 'active');
+                    
+                    const response = await fetch('/api/mcp', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            server: 'stable-diffusion',
+                            tool: 'generate_image',
+                            args: {
+                                prompt: `高质量的${weatherCondition}天气场景，艺术风格，细节丰富`,
+                                negative_prompt: '模糊，扭曲，低质量',
+                                width: 768,
+                                height: 768,
+                                num_outputs: 1
+                            }
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`处理图片失败: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    if (data.error) {
+                        throw new Error(`图片处理错误: ${data.error}`);
+                    }
+                    
+                    updateStep(step4, 'completed');
+                    return data.imagePath || '/path/to/processed/image.png';
+                } catch (error) {
+                    showError(error.message);
+                    throw error;
+                }
+            }
+            
+            // 主处理流程
+            async function processWeatherImage() {
+                const city = cityInput.value.trim();
+                if (!city) {
+                    showError('请输入城市名称');
+                    return;
+                }
+                
+                resetUI();
+                
+                try {
+                    // 1. 获取天气信息
+                    const weatherData = await getWeather(city);
+                    const temperature = weatherData.temperature;
+                    const weatherCondition = (weatherData.conditions || '').toLowerCase();
+                    
+                    // 确定天气类型
+                    let weatherType = 'default';
+                    for (const type in weatherPrompts) {
+                        if (weatherCondition.includes(type)) {
+                            weatherType = type;
+                            break;
+                        }
+                    }
+                    
+                    const weatherInfo = weatherPrompts[weatherType];
+                    const tempDesc = getTemperatureDescription(temperature);
+                    
+                    // 显示天气信息
+                    weatherDetailsDiv.innerHTML = `
+                        <p><strong>城市:</strong> ${city}</p>
+                        <p><strong>温度:</strong> ${temperature}°C (${tempDesc})</p>
+                        <p><strong>天气状况:</strong> ${weatherData.conditions} (${weatherInfo.description})</p>
+                        <p><strong>湿度:</strong> ${weatherData.humidity}%</p>
+                        <p><strong>风速:</strong> ${weatherData.wind_speed} m/s</p>
+                    `;
+                    
+                    // 构建提示词
+                    const basePrompt = weatherInfo.prompt;
+                    const finalPrompt = `${tempDesc}${city}，${basePrompt}`;
+                    
+                    // 显示提示词信息
+                    promptDetailsDiv.innerHTML = `
+                        <p><strong>天气类型:</strong> ${weatherInfo.description}</p>
+                        <p><strong>温度描述:</strong> ${tempDesc}</p>
+                        <p><strong>最终提示词:</strong> ${finalPrompt}</p>
+                    `;
+                    
+                    // 2. 生成图片
+                    const imagePath = await generateImage(finalPrompt);
+                    generatedImageEl.src = imagePath;
+                    
+                    // 3. 处理图片
+                    const processedImagePath = await processImage(imagePath, weatherInfo.description);
+                    processedImageEl.src = processedImagePath;
+                    
+                    // 显示结果
+                    loadingDiv.style.display = 'none';
+                    resultDiv.style.display = 'block';
+                    generateBtn.disabled = false;
+                    
+                } catch (error) {
+                    console.error('处理过程中出错:', error);
+                    // 错误已在各函数中处理
+                }
+            }
+            
+            // 事件监听
+            generateBtn.addEventListener('click', processWeatherImage);
+            cityInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    processWeatherImage();
+                }
+            });
+            
+            // 初始化步骤
+            updateStep(step1, 'waiting');
+        });
+    </script>
+</body>
+</html>

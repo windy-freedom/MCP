@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP客户端联动示例</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #edf7ff;
+            border-radius: 4px;
+        }
+        .image-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .image-container img {
+            max-width: 100%;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        .step {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-left: 3px solid #3498db;
+            background-color: #f8f9fa;
+        }
+        .step.completed {
+            border-left-color: #2ecc71;
+        }
+        .step.active {
+            border-left-color: #f39c12;
+            font-weight: bold;
+        }
+        .error {
+            color: #e74c3c;
+            background-color: #fadbd8;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>MCP客户端联动示例</h1>
+    <p>这个示例展示了如何联动使用三个MCP客户端：weather、everart-forge和stable-diffusion</p>
+    
+    <div class="container">
+        <h2>步骤1：获取天气信息</h2>
+        <div class="form-group">
+            <label for="city">输入城市名称:</label>
+            <input type="text" id="city" placeholder="例如: 北京, 上海, 广州..." value="北京">
+        </div>
+        <button id="get-weather-btn">获取天气</button>
+        <div id="weather-error" class="error"></div>
+        <div id="weather-result" class="result" style="display: none;">
+            <h3>天气信息</h3>
+            <pre id="weather-data"></pre>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>步骤2：根据天气生成图片</h2>
+        <div class="form-group">
+            <label for="prompt">图片提示词:</label>
+            <input type="text" id="prompt" placeholder="根据天气自动生成提示词..." readonly>
+        </div>
+        <button id="generate-image-btn" disabled>生成图片</button>
+        <div id="image-error" class="error"></div>
+        <div id="image-result" class="result" style="display: none;">
+            <h3>生成的图片</h3>
+            <div class="image-container">
+                <img id="generated-image" src="" alt="生成的图片">
+            </div>
+            <pre id="image-data"></pre>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>步骤3：处理图片</h2>
+        <div class="form-group">
+            <label for="sd-prompt">Stable Diffusion提示词:</label>
+            <input type="text" id="sd-prompt" placeholder="根据天气自动生成提示词..." readonly>
+        </div>
+        <button id="process-image-btn" disabled>处理图片</button>
+        <div id="process-error" class="error"></div>
+        <div id="process-result" class="result" style="display: none;">
+            <h3>处理后的图片</h3>
+            <div class="image-container">
+                <img id="processed-image" src="" alt="处理后的图片">
+            </div>
+            <pre id="process-data"></pre>
+        </div>
+    </div>
+
+    <script>
+        // 天气条件映射到中文描述和提示词
+        const weatherPrompts = {
+            'clear': {
+                description: '晴朗',
+                prompt: '阳光明媚的城市景观，蓝天白云，明亮的阳光照射下的城市街道，充满活力的城市场景'
+            },
+            'clouds': {
+                description: '多云',
+                prompt: '多云天空下的城市景观，云层覆盖的天空，柔和的光线下的城市街道，宁静的城市场景'
+            },
+            'rain': {
+                description: '雨天',
+                prompt: '雨中的城市街道，雨滴落在窗户上，雨伞和雨衣，湿润的路面反射着灯光，雨天的宁静氛围'
+            },
+            'drizzle': {
+                description: '毛毛雨',
+                prompt: '毛毛细雨中的城市，轻微的雾气，湿润的空气，微雨中的行人，柔和的雨天氛围'
+            },
+            'thunderstorm': {
+                description: '雷暴',
+                prompt: '雷暴天气下的城市，闪电划过天空，乌云密布，暴雨中的城市街道，戏剧性的天气场景'
+            },
+            'snow': {
+                description: '雪天',
+                prompt: '雪覆盖的城市景观，雪花飘落，白雪皑皑的街道，冬季的宁静氛围，雪中的城市建筑'
+            },
+            'mist': {
+                description: '薄雾',
+                prompt: '薄雾笼罩的城市，朦胧的城市轮廓，雾中的街灯，神秘而宁静的城市氛围'
+            },
+            'fog': {
+                description: '浓雾',
+                prompt: '浓雾中的城市，模糊的建筑轮廓，雾中若隐若现的灯光，神秘而安静的城市场景'
+            },
+            'default': {
+                description: '一般天气',
+                prompt: '城市景观，城市街道，建筑和行人，日常城市生活场景'
+            }
+        };
+        
+        // 根据温度调整提示词
+        function getTemperatureDescription(temp) {
+            if (temp < 0) return '极冷的';
+            if (temp < 10) return '寒冷的';
+            if (temp < 20) return '凉爽的';
+            if (temp < 30) return '温暖的';
+            return '炎热的';
+        }
+        
+        // 显示错误信息
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            errorElement.textContent = '错误: ' + message;
+            errorElement.style.display = 'block';
+        }
+        
+        // 隐藏错误信息
+        function hideError(elementId) {
+            document.getElementById(elementId).style.display = 'none';
+        }
+        
+        // 获取天气信息
+        async function getWeather() {
+            const cityInput = document.getElementById('city');
+            const city = cityInput.value.trim();
+            
+            if (!city) {
+                showError('weather-error', '请输入城市名称');
+                return;
+            }
+            
+            hideError('weather-error');
+            
+            try {
+                // 这里我们假设有一个全局函数callMcpTool可以调用MCP工具
+                // 在实际环境中，这个函数需要根据实际情况实现
+                const weatherData = await callMcpTool('weather', 'get_current_weather', { city });
+                
+                // 显示天气数据
+                document.getElementById('weather-data').textContent = JSON.stringify(weatherData, null, 2);
+                document.getElementById('weather-result').style.display = 'block';
+                
+                // 解析天气条件
+                const temperature = parseFloat(weatherData.temperature || 20);
+                const weatherCondition = (weatherData.conditions || '').toLowerCase();
+                
+                // 确定天气类型
+                let weatherType = 'default';
+                for (const type in weatherPrompts) {
+                    if (weatherCondition.includes(type)) {
+                        weatherType = type;
+                        break;
+                    }
+                }
+                
+                const weatherInfo = weatherPrompts[weatherType];
+                const tempDesc = getTemperatureDescription(temperature);
+                
+                // 构建提示词
+                const basePrompt = weatherInfo.prompt;
+                const finalPrompt = `${tempDesc}${city}，${basePrompt}`;
+                
+                // 设置提示词
+                document.getElementById('prompt').value = finalPrompt;
+                document.getElementById('sd-prompt').value = `高质量的${weatherInfo.description}天气场景，艺术风格，细节丰富`;
+                
+                // 启用生成图片按钮
+                document.getElementById('generate-image-btn').disabled = false;
+                
+                // 保存天气信息供后续使用
+                window.weatherInfo = {
+                    city,
+                    temperature,
+                    conditions: weatherData.conditions,
+                    weatherType,
+                    description: weatherInfo.description
+                };
+                
+                return weatherData;
+            } catch (error) {
+                showError('weather-error', error.message);
+                throw error;
+            }
+        }
+        
+        // 生成图片
+        async function generateImage() {
+            const promptInput = document.getElementById('prompt');
+            const prompt = promptInput.value.trim();
+            
+            if (!prompt) {
+                showError('image-error', '请先获取天气信息');
+                return;
+            }
+            
+            hideError('image-error');
+            
+            try {
+                // 调用everart-forge-mcp生成图片
+                const imageData = await callMcpTool('github.com/nickbaumann98/everart-forge-mcp', 'generate_image', {
+                    prompt,
+                    model: '8000', // Recraft-Vector
+                    image_count: 1,
+                    format: 'svg'
+                });
+                
+                // 显示图片数据
+                document.getElementById('image-data').textContent = JSON.stringify(imageData, null, 2);
+                document.getElementById('image-result').style.display = 'block';
+                
+                // 显示图片
+                if (imageData.path) {
+                    document.getElementById('generated-image').src = imageData.path;
+                }
+                
+                // 启用处理图片按钮
+                document.getElementById('process-image-btn').disabled = false;
+                
+                // 保存图片信息供后续使用
+                window.imageInfo = {
+                    path: imageData.path,
+                    prompt
+                };
+                
+                return imageData;
+            } catch (error) {
+                showError('image-error', error.message);
+                throw error;
+            }
+        }
+        
+        // 处理图片
+        async function processImage() {
+            const sdPromptInput = document.getElementById('sd-prompt');
+            const sdPrompt = sdPromptInput.value.trim();
+            
+            if (!sdPrompt || !window.imageInfo || !window.imageInfo.path) {
+                showError('process-error', '请先生成图片');
+                return;
+            }
+            
+            hideError('process-error');
+            
+            try {
+                // 调用stable-diffusion处理图片
+                const processedData = await callMcpTool('stable-diffusion', 'generate_image', {
+                    prompt: sdPrompt,
+                    negative_prompt: '模糊，扭曲，低质量',
+                    width: 768,
+                    height: 768,
+                    num_outputs: 1
+                });
+                
+                // 显示处理后的数据
+                document.getElementById('process-data').textContent = JSON.stringify(processedData, null, 2);
+                document.getElementById('process-result').style.display = 'block';
+                
+                // 显示处理后的图片
+                if (processedData.images && processedData.images.length > 0) {
+                    document.getElementById('processed-image').src = processedData.images[0];
+                }
+                
+                return processedData;
+            } catch (error) {
+                showError('process-error', error.message);
+                throw error;
+            }
+        }
+        
+        // 模拟调用MCP工具的函数
+        // 在实际环境中，这个函数需要根据实际情况实现
+        async function callMcpTool(serverName, toolName, args) {
+            // 这里只是一个模拟实现，实际使用时需要替换为真实的MCP工具调用
+            console.log(`调用MCP工具: ${serverName}/${toolName}`, args);
+            
+            // 模拟延迟
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // 根据不同的工具返回不同的模拟数据
+            if (serverName === 'weather' && toolName === 'get_current_weather') {
+                return {
+                    temperature: 22,
+                    conditions: 'Clear Sky',
+                    humidity: 65,
+                    wind_speed: 3.5
+                };
+            } else if (serverName === 'github.com/nickbaumann98/everart-forge-mcp' && toolName === 'generate_image') {
+                return {
+                    path: 'https://via.placeholder.com/800x600?text=Generated+Image',
+                    prompt: args.prompt
+                };
+            } else if (serverName === 'stable-diffusion' && toolName === 'generate_image') {
+                return {
+                    images: ['https://via.placeholder.com/800x600?text=Processed+Image'],
+                    prompt: args.prompt
+                };
+            } else {
+                throw new Error(`不支持的MCP工具: ${serverName}/${toolName}`);
+            }
+        }
+        
+        // 事件监听
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('get-weather-btn').addEventListener('click', getWeather);
+            document.getElementById('generate-image-btn').addEventListener('click', generateImage);
+            document.getElementById('process-image-btn').addEventListener('click', processImage);
+        });
+    </script>
+</body>
+</html>
