@@ -15,7 +15,7 @@ const server = http.createServer(async (req, res) => {
     // 设置CORS头，允许来自任何源的请求
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Origin, X-Requested-With');
     
     // 处理预检请求
     if (req.method === 'OPTIONS') {
@@ -168,19 +168,98 @@ async function callEverartMcp(args) {
         
         console.log(`生成图片: ${prompt}`);
         
-        // 由于没有实际的API密钥，我们使用模拟数据
-        console.log('使用模拟数据代替实际API调用');
+        // 使用MCP工具调用实际的Everart API
+        console.log('调用Everart MCP工具...');
         
-        // 根据提示词生成不同的占位图URL
-        const promptHash = Math.abs(prompt.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 1000);
-        // 使用更可靠的占位图服务
-        const imageUrl = `https://picsum.photos/800/600?random=${promptHash}`;
+        // 构建命令来调用MCP工具
+        const command = `
+            const { spawn } = require('child_process');
+            const path = require('path');
+            
+            // 参数
+            const args = {
+                prompt: ${JSON.stringify(prompt)},
+                model: ${JSON.stringify(model)},
+                image_count: ${image_count},
+                format: ${JSON.stringify(format)}
+            };
+            
+            // 启动MCP服务器进程
+            const mcp = spawn('node', [path.join(process.env.HOME, 'Documents/Cline/MCP/everart-forge-mcp/build/index.js')], {
+                env: {
+                    ...process.env,
+                    EVERART_API_KEY: 'everart-k8hX9bUYNh-eMr6C2HHfzCk7naRMuJwHIBhH_0mGJAA'
+                },
+                stdio: ['pipe', 'pipe', 'pipe']
+            });
+            
+            let data = '';
+            let error = '';
+            
+            mcp.stdout.on('data', (chunk) => {
+                data += chunk.toString();
+            });
+            
+            mcp.stderr.on('data', (chunk) => {
+                error += chunk.toString();
+            });
+            
+            // 发送请求到MCP服务器
+            mcp.stdin.write(JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'callTool',
+                params: {
+                    name: 'generate_image',
+                    arguments: args
+                }
+            }) + '\\n');
+            
+            mcp.on('close', (code) => {
+                if (code !== 0) {
+                    console.error('MCP进程退出，代码:', code);
+                    console.error('错误:', error);
+                    process.exit(1);
+                }
+                
+                try {
+                    const response = JSON.parse(data);
+                    console.log(JSON.stringify(response, null, 2));
+                } catch (e) {
+                    console.error('解析响应失败:', e);
+                    console.error('原始响应:', data);
+                    process.exit(1);
+                }
+            });
+        `;
         
-        // 模拟处理延迟
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // 执行命令
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        const execPromise = promisify(exec);
+        
+        const { stdout, stderr } = await execPromise(`node -e "${command.replace(/"/g, '\\"')}"`);
+        
+        if (stderr) {
+            console.error('执行命令出错:', stderr);
+            throw new Error(stderr);
+        }
+        
+        // 解析响应
+        const response = JSON.parse(stdout);
+        
+        // 从响应中提取图片路径
+        const resultText = response.result.content[0].text;
+        const match = resultText.match(/Saved to: (.+?)$/m);
+        
+        if (!match) {
+            throw new Error('无法从响应中提取图片路径');
+        }
+        
+        const imagePath = match[1];
         
         return {
-            path: imageUrl,
+            path: imagePath,
             prompt: prompt,
             model: model,
             format: format
@@ -208,21 +287,96 @@ async function callStableDiffusionMcp(args) {
         
         console.log(`处理图片: ${prompt}`);
         
-        // 由于没有实际的API密钥，我们使用模拟数据
-        console.log('使用模拟数据代替实际API调用');
+        // 使用MCP工具调用实际的Stable Diffusion API
+        console.log('调用Stable Diffusion MCP工具...');
         
-        // 根据提示词生成不同的占位图URL
-        const promptHash = Math.abs(prompt.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 1000);
+        // 构建命令来调用MCP工具
+        const command = `
+            const { spawn } = require('child_process');
+            const path = require('path');
+            
+            // 参数
+            const args = {
+                prompt: ${JSON.stringify(prompt)},
+                negative_prompt: ${JSON.stringify(negative_prompt)},
+                width: ${width},
+                height: ${height},
+                num_outputs: ${num_outputs}
+            };
+            
+            // 启动MCP服务器进程
+            const mcp = spawn('node', [path.join(process.env.HOME, 'Documents/Cline/MCP/stable-diffusion-mcp/build/index.js')], {
+                env: {
+                    ...process.env,
+                    STABLE_DIFFUSION_API_KEY: 'sk-Wg1Y7yqXaP5xfGh07H9KDL0V1TZCYK8XDb5ImYVmTJg9fTEy'
+                },
+                stdio: ['pipe', 'pipe', 'pipe']
+            });
+            
+            let data = '';
+            let error = '';
+            
+            mcp.stdout.on('data', (chunk) => {
+                data += chunk.toString();
+            });
+            
+            mcp.stderr.on('data', (chunk) => {
+                error += chunk.toString();
+            });
+            
+            // 发送请求到MCP服务器
+            mcp.stdin.write(JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'callTool',
+                params: {
+                    name: 'generate_image',
+                    arguments: args
+                }
+            }) + '\\n');
+            
+            mcp.on('close', (code) => {
+                if (code !== 0) {
+                    console.error('MCP进程退出，代码:', code);
+                    console.error('错误:', error);
+                    process.exit(1);
+                }
+                
+                try {
+                    const response = JSON.parse(data);
+                    console.log(JSON.stringify(response, null, 2));
+                } catch (e) {
+                    console.error('解析响应失败:', e);
+                    console.error('原始响应:', data);
+                    process.exit(1);
+                }
+            });
+        `;
         
-        // 模拟多张图片
-        const images = [];
-        for (let i = 0; i < num_outputs; i++) {
-            // 使用更可靠的占位图服务
-            images.push(`https://picsum.photos/768/768?random=${promptHash + i}`);
+        // 执行命令
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        const execPromise = promisify(exec);
+        
+        const { stdout, stderr } = await execPromise(`node -e "${command.replace(/"/g, '\\"')}"`);
+        
+        if (stderr) {
+            console.error('执行命令出错:', stderr);
+            throw new Error(stderr);
         }
         
-        // 模拟处理延迟
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        // 解析响应
+        const response = JSON.parse(stdout);
+        
+        // 从响应中提取图片URL
+        const resultText = response.result.content[0].text;
+        const responseData = JSON.parse(resultText);
+        
+        // 提取图片URL
+        const images = responseData.artifacts.map(artifact => {
+            // 将base64图片数据转换为数据URL
+            return `data:image/png;base64,${artifact.base64}`;
+        });
         
         return {
             images: images,

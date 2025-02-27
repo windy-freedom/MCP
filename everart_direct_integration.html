@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Everart MCP直接集成示例</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #edf7ff;
+            border-radius: 4px;
+        }
+        .image-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .image-container img {
+            max-width: 100%;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        .error {
+            color: #e74c3c;
+            background-color: #fadbd8;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .loading::after {
+            content: "...";
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: "."; }
+            40% { content: ".."; }
+            60%, 100% { content: "..."; }
+        }
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .gallery-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+            transition: transform 0.3s;
+        }
+        .gallery-item:hover {
+            transform: scale(1.05);
+        }
+        .gallery-item img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .gallery-item .caption {
+            padding: 8px;
+            font-size: 14px;
+            background-color: #f8f9fa;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .server-status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .server-status.online {
+            background-color: #2ecc71;
+        }
+        .server-status.offline {
+            background-color: #e74c3c;
+        }
+        .server-info {
+            font-size: 14px;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Everart MCP直接集成示例</h1>
+    <p>这个示例展示了如何直接与Everart MCP服务器通信，不依赖Claude作为中介</p>
+    
+    <div class="server-info">
+        <div><span class="server-status" id="server-status"></span> <span id="server-status-text">检查服务器状态...</span></div>
+        <div id="server-url"></div>
+    </div>
+    
+    <div class="container">
+        <h2>生成图片</h2>
+        <div class="form-group">
+            <label for="prompt">图片提示词:</label>
+            <textarea id="prompt" rows="3" placeholder="输入描述图片的提示词...">美丽的山脉风景，湖泊，夕阳</textarea>
+        </div>
+        <div class="form-group">
+            <label for="model">选择模型:</label>
+            <select id="model">
+                <option value="5000">FLUX1.1 (标准质量)</option>
+                <option value="9000">FLUX1.1-ultra (超高质量)</option>
+                <option value="6000">SD3.5 (Stable Diffusion 3.5)</option>
+                <option value="7000">Recraft-Real (照片级真实风格)</option>
+                <option value="8000" selected>Recraft-Vector (矢量艺术风格)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="format">输出格式:</label>
+            <select id="format">
+                <option value="svg" selected>SVG (矢量格式，仅Recraft-Vector模型支持)</option>
+                <option value="png">PNG</option>
+                <option value="jpg">JPG</option>
+                <option value="webp">WebP</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="image-count">图片数量:</label>
+            <select id="image-count">
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+            </select>
+        </div>
+        <button id="generate-btn">生成图片</button>
+        <div id="generate-loading" class="loading">正在生成图片，这可能需要一些时间...</div>
+        <div id="generate-error" class="error"></div>
+        <div id="generate-result" class="result" style="display: none;">
+            <h3>生成的图片</h3>
+            <div class="image-container">
+                <img id="generated-image" src="" alt="生成的图片">
+            </div>
+            <pre id="generate-data"></pre>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>已生成的图片</h2>
+        <button id="list-images-btn">刷新图片列表</button>
+        <div id="list-loading" class="loading">正在获取图片列表...</div>
+        <div id="list-error" class="error"></div>
+        <div id="gallery" class="gallery"></div>
+    </div>
+
+    <script>
+        // 服务器URL
+        const SERVER_URL = 'http://localhost:3001/api/mcp';
+        
+        // 显示错误信息
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            errorElement.textContent = '错误: ' + message;
+            errorElement.style.display = 'block';
+        }
+        
+        // 隐藏错误信息
+        function hideError(elementId) {
+            document.getElementById(elementId).style.display = 'none';
+        }
+        
+        // 显示加载状态
+        function showLoading(elementId) {
+            document.getElementById(elementId).style.display = 'block';
+        }
+        
+        // 隐藏加载状态
+        function hideLoading(elementId) {
+            document.getElementById(elementId).style.display = 'none';
+        }
+        
+        // 检查服务器状态
+        async function checkServerStatus() {
+            const statusElement = document.getElementById('server-status');
+            const statusTextElement = document.getElementById('server-status-text');
+            const serverUrlElement = document.getElementById('server-url');
+            
+            try {
+                const response = await fetch(SERVER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        server: 'weather',
+                        tool: 'get_current_weather',
+                        args: { city: 'Beijing' }
+                    })
+                });
+                
+                if (response.ok) {
+                    statusElement.className = 'server-status online';
+                    statusTextElement.textContent = '服务器在线';
+                    serverUrlElement.textContent = `服务器URL: ${SERVER_URL}`;
+                    return true;
+                } else {
+                    statusElement.className = 'server-status offline';
+                    statusTextElement.textContent = '服务器返回错误: ' + response.statusText;
+                    return false;
+                }
+            } catch (error) {
+                statusElement.className = 'server-status offline';
+                statusTextElement.textContent = '服务器离线或无法连接';
+                serverUrlElement.textContent = `尝试连接: ${SERVER_URL}`;
+                console.error('服务器连接错误:', error);
+                return false;
+            }
+        }
+        
+        // 调用MCP API
+        async function callMcpApi(server, tool, args) {
+            try {
+                console.log(`调用MCP API: ${server}/${tool}`, args);
+                
+                const response = await fetch(SERVER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Origin': window.location.origin
+                    },
+                    mode: 'cors',
+                    credentials: 'omit',
+                    body: JSON.stringify({
+                        server,
+                        tool,
+                        args
+                    })
+                });
+                
+                console.log('API响应状态:', response.status, response.statusText);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API错误响应:', errorText);
+                    throw new Error(`API请求失败 (${response.status}): ${response.statusText}\n${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('API响应数据:', data);
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                return data;
+            } catch (error) {
+                console.error('调用MCP API出错:', error);
+                throw error;
+            }
+        }
+        
+        // 生成图片
+        async function generateImage() {
+            const promptInput = document.getElementById('prompt');
+            const modelSelect = document.getElementById('model');
+            const formatSelect = document.getElementById('format');
+            const imageCountSelect = document.getElementById('image-count');
+            
+            const prompt = promptInput.value.trim();
+            const model = modelSelect.value;
+            const format = formatSelect.value;
+            const imageCount = parseInt(imageCountSelect.value);
+            
+            if (!prompt) {
+                showError('generate-error', '请输入提示词');
+                return;
+            }
+            
+            // 检查SVG格式是否与Recraft-Vector模型匹配
+            if (format === 'svg' && model !== '8000') {
+                showError('generate-error', 'SVG格式只能与Recraft-Vector (8000)模型一起使用');
+                return;
+            }
+            
+            hideError('generate-error');
+            showLoading('generate-loading');
+            
+            try {
+                // 调用Everart Forge MCP API
+                const imageData = await callMcpApi('github.com/nickbaumann98/everart-forge-mcp', 'generate_image', {
+                    prompt,
+                    model,
+                    image_count: imageCount,
+                    format
+                });
+                
+                // 显示图片数据
+                document.getElementById('generate-data').textContent = JSON.stringify(imageData, null, 2);
+                document.getElementById('generate-result').style.display = 'block';
+                
+                // 显示图片
+                if (imageData.path) {
+                    const imgElement = document.getElementById('generated-image');
+                    imgElement.src = imageData.path;
+                    imgElement.alt = prompt;
+                    
+                    // 图片加载错误处理
+                    imgElement.onerror = function() {
+                        imgElement.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"%3E%3Crect fill="%23f8f9fa" width="800" height="600"/%3E%3Ctext fill="%23343a40" font-family="sans-serif" font-size="30" dy="10.5" font-weight="bold" x="50%25" y="50%25" text-anchor="middle"%3E无法加载图片%3C/text%3E%3C/svg%3E';
+                        
+                        // 添加图片路径提示
+                        const pathInfo = document.createElement('div');
+                        pathInfo.style.marginTop = '10px';
+                        pathInfo.style.padding = '10px';
+                        pathInfo.style.backgroundColor = '#fff3cd';
+                        pathInfo.style.borderRadius = '4px';
+                        pathInfo.innerHTML = `<strong>图片已生成但无法直接显示。</strong><br>图片路径: ${imageData.path}<br>您可以手动打开此文件查看图片。`;
+                        
+                        const imageContainer = document.querySelector('.image-container');
+                        if (!imageContainer.querySelector('.path-info')) {
+                            imageContainer.appendChild(pathInfo);
+                            pathInfo.className = 'path-info';
+                        }
+                    };
+                }
+                
+                // 刷新图片列表
+                await listImages();
+                
+                return imageData;
+            } catch (error) {
+                showError('generate-error', error.message);
+                throw error;
+            } finally {
+                hideLoading('generate-loading');
+            }
+        }
+        
+        // 获取图片列表
+        async function listImages() {
+            hideError('list-error');
+            showLoading('list-loading');
+            
+            try {
+                // 调用Everart Forge MCP API获取图片列表
+                const listData = await callMcpApi('github.com/nickbaumann98/everart-forge-mcp', 'list_images', {});
+                
+                // 解析图片列表
+                const imageList = listData.split('\n')
+                    .filter(line => line.trim().startsWith('-'))
+                    .map(line => line.trim().substring(2).trim());
+                
+                // 显示图片库
+                const galleryElement = document.getElementById('gallery');
+                galleryElement.innerHTML = '';
+                
+                if (imageList.length === 0) {
+                    galleryElement.innerHTML = '<p>没有找到图片</p>';
+                    return;
+                }
+                
+                // 创建图片库项目
+                imageList.forEach(filename => {
+                    const item = document.createElement('div');
+                    item.className = 'gallery-item';
+                    
+                    const img = document.createElement('img');
+                    const imagePath = `/home/codespace/Documents/Cline/MCP/everart-forge-mcp/images/${filename}`;
+                    img.src = imagePath;
+                    img.alt = filename;
+                    
+                    // 图片加载错误处理
+                    img.onerror = function() {
+                        img.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="150" viewBox="0 0 200 150"%3E%3Crect fill="%23f8f9fa" width="200" height="150"/%3E%3Ctext fill="%23343a40" font-family="sans-serif" font-size="12" dy="4.5" font-weight="bold" x="50%25" y="50%25" text-anchor="middle"%3E预览不可用%3C/text%3E%3C/svg%3E';
+                    };
+                    
+                    const caption = document.createElement('div');
+                    caption.className = 'caption';
+                    caption.textContent = filename;
+                    caption.title = filename;
+                    
+                    item.appendChild(img);
+                    item.appendChild(caption);
+                    
+                    // 点击查看图片
+                    item.addEventListener('click', () => {
+                        viewImage(filename);
+                    });
+                    
+                    galleryElement.appendChild(item);
+                });
+                
+                return imageList;
+            } catch (error) {
+                showError('list-error', error.message);
+                throw error;
+            } finally {
+                hideLoading('list-loading');
+            }
+        }
+        
+        // 查看图片
+        async function viewImage(filename) {
+            try {
+                await callMcpApi('github.com/nickbaumann98/everart-forge-mcp', 'view_image', {
+                    filename
+                });
+                console.log(`已打开图片: ${filename}`);
+            } catch (error) {
+                console.error('查看图片出错:', error);
+                alert(`无法打开图片: ${error.message}`);
+            }
+        }
+        
+        // 事件监听
+        document.addEventListener('DOMContentLoaded', async function() {
+            // 检查服务器状态
+            const serverOnline = await checkServerStatus();
+            
+            // 设置按钮状态
+            document.getElementById('generate-btn').disabled = !serverOnline;
+            document.getElementById('list-images-btn').disabled = !serverOnline;
+            
+            // 添加事件监听器
+            document.getElementById('generate-btn').addEventListener('click', generateImage);
+            document.getElementById('list-images-btn').addEventListener('click', listImages);
+            
+            // 如果服务器在线，获取图片列表
+            if (serverOnline) {
+                listImages().catch(console.error);
+            }
+            
+            // 监听模型选择变化
+            document.getElementById('model').addEventListener('change', function(e) {
+                const formatSelect = document.getElementById('format');
+                // 如果选择了非Recraft-Vector模型，并且当前格式是SVG，则切换到PNG
+                if (e.target.value !== '8000' && formatSelect.value === 'svg') {
+                    formatSelect.value = 'png';
+                }
+            });
+            
+            // 监听格式选择变化
+            document.getElementById('format').addEventListener('change', function(e) {
+                const modelSelect = document.getElementById('model');
+                // 如果选择了SVG格式，但模型不是Recraft-Vector，则切换到Recraft-Vector
+                if (e.target.value === 'svg' && modelSelect.value !== '8000') {
+                    modelSelect.value = '8000';
+                    alert('SVG格式只能与Recraft-Vector (8000)模型一起使用，已自动切换模型。');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>北京天气图片生成</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #edf7ff;
+            border-radius: 4px;
+        }
+        .image-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .image-container img {
+            max-width: 100%;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        .error {
+            color: #e74c3c;
+            background-color: #fadbd8;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: none;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .loading::after {
+            content: "...";
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: "."; }
+            40% { content: ".."; }
+            60%, 100% { content: "..."; }
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .step {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-left: 3px solid #3498db;
+            background-color: #f8f9fa;
+        }
+        .step.completed {
+            border-left-color: #2ecc71;
+        }
+        .step.active {
+            border-left-color: #f39c12;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>北京天气图片生成</h1>
+        <p>点击按钮获取北京当前天气，并生成相应的艺术图片</p>
+        
+        <button id="generate-btn">生成北京天气图片</button>
+        
+        <div id="loading" class="loading">正在处理中</div>
+        <div id="error" class="error"></div>
+        
+        <div id="process-steps">
+            <div id="step1" class="step">1. 获取北京天气信息</div>
+            <div id="step2" class="step">2. 生成天气艺术图片</div>
+        </div>
+        
+        <div id="weather-result" class="result" style="display: none;">
+            <h3>北京天气信息</h3>
+            <div id="weather-details"></div>
+            <pre id="weather-data"></pre>
+        </div>
+        
+        <div id="image-result" class="result" style="display: none;">
+            <h3>生成的图片</h3>
+            <div id="prompt-details"></div>
+            <div class="image-container">
+                <img id="generated-image" src="" alt="北京天气图片">
+            </div>
+            <pre id="image-data"></pre>
+        </div>
+    </div>
+
+    <script>
+        // 天气条件映射到中文描述和提示词
+        const weatherPrompts = {
+            'clear': {
+                description: '晴朗',
+                prompt: '阳光明媚的北京城市景观，蓝天白云，明亮的阳光照射下的城市街道，充满活力的城市场景，天安门，故宫，长城'
+            },
+            'clouds': {
+                description: '多云',
+                prompt: '多云天空下的北京城市景观，云层覆盖的天空，柔和的光线下的城市街道，宁静的城市场景，天安门，故宫，长城'
+            },
+            'rain': {
+                description: '雨天',
+                prompt: '雨中的北京街道，雨滴落在窗户上，雨伞和雨衣，湿润的路面反射着灯光，雨天的宁静氛围，天安门，故宫'
+            },
+            'drizzle': {
+                description: '毛毛雨',
+                prompt: '毛毛细雨中的北京，轻微的雾气，湿润的空气，微雨中的行人，柔和的雨天氛围，天安门，故宫'
+            },
+            'thunderstorm': {
+                description: '雷暴',
+                prompt: '雷暴天气下的北京，闪电划过天空，乌云密布，暴雨中的城市街道，戏剧性的天气场景，天安门，故宫'
+            },
+            'snow': {
+                description: '雪天',
+                prompt: '雪覆盖的北京景观，雪花飘落，白雪皑皑的街道，冬季的宁静氛围，雪中的城市建筑，天安门，故宫，长城'
+            },
+            'mist': {
+                description: '薄雾',
+                prompt: '薄雾笼罩的北京，朦胧的城市轮廓，雾中的街灯，神秘而宁静的城市氛围，天安门，故宫'
+            },
+            'fog': {
+                description: '浓雾',
+                prompt: '浓雾中的北京，模糊的建筑轮廓，雾中若隐若现的灯光，神秘而安静的城市场景，天安门，故宫'
+            },
+            'default': {
+                description: '一般天气',
+                prompt: '北京城市景观，城市街道，建筑和行人，日常城市生活场景，天安门，故宫，长城'
+            }
+        };
+        
+        // 根据温度调整提示词
+        function getTemperatureDescription(temp) {
+            if (temp < 0) return '极冷的';
+            if (temp < 10) return '寒冷的';
+            if (temp < 20) return '凉爽的';
+            if (temp < 30) return '温暖的';
+            return '炎热的';
+        }
+        
+        // 更新步骤状态
+        function updateStep(step, status) {
+            step.classList.remove('active', 'completed');
+            if (status === 'active') {
+                step.classList.add('active');
+                step.innerHTML = step.innerHTML.replace('...', '') + ' - 进行中...';
+            } else if (status === 'completed') {
+                step.classList.add('completed');
+                step.innerHTML = step.innerHTML.replace(' - 进行中...', '') + ' - 完成';
+            } else {
+                step.innerHTML = step.innerHTML.replace(' - 进行中...', '').replace(' - 完成', '');
+            }
+        }
+        
+        // 显示错误信息
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = '错误: ' + message;
+            errorDiv.style.display = 'block';
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('generate-btn').disabled = false;
+        }
+        
+        // 直接调用MCP API
+        async function callMcpApi(server, tool, args) {
+            try {
+                console.log(`调用MCP API: ${server}/${tool}`, args);
+                
+                // 直接使用MCP工具，不通过中间服务器
+                const response = await fetch('/api/mcp', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        server,
+                        tool,
+                        args
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API请求失败 (${response.status}): ${response.statusText}\n${errorText}`);
+                }
+                
+                const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                return data;
+            } catch (error) {
+                console.error('调用MCP API出错:', error);
+                throw error;
+            }
+        }
+        
+        // 主处理流程
+        async function generateBeijingWeatherImage() {
+            const generateBtn = document.getElementById('generate-btn');
+            const loadingDiv = document.getElementById('loading');
+            const step1 = document.getElementById('step1');
+            const step2 = document.getElementById('step2');
+            const weatherResultDiv = document.getElementById('weather-result');
+            const weatherDetailsDiv = document.getElementById('weather-details');
+            const weatherDataPre = document.getElementById('weather-data');
+            const imageResultDiv = document.getElementById('image-result');
+            const promptDetailsDiv = document.getElementById('prompt-details');
+            const generatedImageEl = document.getElementById('generated-image');
+            const imageDataPre = document.getElementById('image-data');
+            
+            // 重置界面
+            document.getElementById('error').style.display = 'none';
+            weatherResultDiv.style.display = 'none';
+            imageResultDiv.style.display = 'none';
+            loadingDiv.style.display = 'block';
+            generateBtn.disabled = true;
+            
+            updateStep(step1, 'active');
+            updateStep(step2, 'waiting');
+            
+            try {
+                // 1. 获取北京天气信息
+                const weatherData = await callMcpApi('weather', 'get_current_weather', { city: '北京' });
+                updateStep(step1, 'completed');
+                
+                // 显示天气信息
+                const temperature = parseFloat(weatherData.temperature || 20);
+                const weatherCondition = (weatherData.conditions || '').toLowerCase();
+                
+                // 确定天气类型
+                let weatherType = 'default';
+                for (const type in weatherPrompts) {
+                    if (weatherCondition.includes(type)) {
+                        weatherType = type;
+                        break;
+                    }
+                }
+                
+                const weatherInfo = weatherPrompts[weatherType];
+                const tempDesc = getTemperatureDescription(temperature);
+                
+                weatherDetailsDiv.innerHTML = `
+                    <p><strong>城市:</strong> 北京</p>
+                    <p><strong>温度:</strong> ${temperature}°C (${tempDesc})</p>
+                    <p><strong>天气状况:</strong> ${weatherData.conditions} (${weatherInfo.description})</p>
+                    <p><strong>湿度:</strong> ${weatherData.humidity}%</p>
+                    <p><strong>风速:</strong> ${weatherData.wind_speed} m/s</p>
+                `;
+                
+                weatherDataPre.textContent = JSON.stringify(weatherData, null, 2);
+                weatherResultDiv.style.display = 'block';
+                
+                // 2. 生成图片
+                updateStep(step2, 'active');
+                
+                // 构建提示词
+                const basePrompt = weatherInfo.prompt;
+                const finalPrompt = `${tempDesc}北京，${basePrompt}，矢量艺术风格`;
+                
+                promptDetailsDiv.innerHTML = `
+                    <p><strong>天气类型:</strong> ${weatherInfo.description}</p>
+                    <p><strong>温度描述:</strong> ${tempDesc}</p>
+                    <p><strong>最终提示词:</strong> ${finalPrompt}</p>
+                `;
+                
+                // 使用Everart Forge MCP生成图片
+                const imageData = await callMcpApi('github.com/nickbaumann98/everart-forge-mcp', 'generate_image', {
+                    prompt: finalPrompt,
+                    model: '8000', // Recraft-Vector
+                    image_count: 1,
+                    format: 'svg'
+                });
+                
+                updateStep(step2, 'completed');
+                
+                // 显示图片
+                if (imageData.path) {
+                    generatedImageEl.src = imageData.path;
+                    generatedImageEl.alt = `北京${weatherInfo.description}天气图片`;
+                    
+                    // 图片加载错误处理
+                    generatedImageEl.onerror = function() {
+                        generatedImageEl.src = 'data:image/svg+xml;charset=UTF-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"%3E%3Crect fill="%23f8f9fa" width="800" height="600"/%3E%3Ctext fill="%23343a40" font-family="sans-serif" font-size="30" dy="10.5" font-weight="bold" x="50%25" y="50%25" text-anchor="middle"%3E无法加载图片%3C/text%3E%3C/svg%3E';
+                        
+                        // 添加图片路径提示
+                        const pathInfo = document.createElement('div');
+                        pathInfo.style.marginTop = '10px';
+                        pathInfo.style.padding = '10px';
+                        pathInfo.style.backgroundColor = '#fff3cd';
+                        pathInfo.style.borderRadius = '4px';
+                        pathInfo.innerHTML = `<strong>图片已生成但无法直接显示。</strong><br>图片路径: ${imageData.path}<br>您可以手动打开此文件查看图片。`;
+                        
+                        const imageContainer = document.querySelector('.image-container');
+                        if (!imageContainer.querySelector('.path-info')) {
+                            imageContainer.appendChild(pathInfo);
+                        }
+                    };
+                }
+                
+                imageDataPre.textContent = JSON.stringify(imageData, null, 2);
+                imageResultDiv.style.display = 'block';
+                
+            } catch (error) {
+                console.error('处理过程中出错:', error);
+                showError(error.message);
+            } finally {
+                loadingDiv.style.display = 'none';
+                generateBtn.disabled = false;
+            }
+        }
+        
+        // 事件监听
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('generate-btn').addEventListener('click', generateBeijingWeatherImage);
+        });
+    </script>
+</body>
+</html>
